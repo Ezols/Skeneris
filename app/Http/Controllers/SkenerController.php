@@ -12,7 +12,7 @@ class SkenerController
     const KeyChar: array[0..19] of Char = 'C'#27'%'#241'789/456*123-0.=+';
     var I: Integer; P: PView; R: TRect;
     Begin
-    R.Assign(5, 3, 29, 18); inherited Init(R?, 'Calculator');
+    R.Assign(5, 3, 29, 18); inherited Init(R, 'Calculator');
     Options := Options or ofFirstClick;
     for I := 0 to 19 do P:=New(PButton, cmCalcButton);
     P^.Options := P^.Options and not ofSelectable;
@@ -28,7 +28,12 @@ class SkenerController
     public function skener()
     {
         $code = str_split(static::CODE);
-        return $this->tokenize($code);
+
+
+        return array_filter($this->tokenize($code), function($token) {
+
+            return $token['type'] !== 'whitespace';
+        });
     }
 
     protected function tokenize($chars)
@@ -65,7 +70,7 @@ class SkenerController
                 break;
 
             default:
-                throw new LexerException($chars[0], ceil($this->lines / 2), $this->position);
+                $this->parseException($chars);
 
         }
 
@@ -111,6 +116,7 @@ class SkenerController
             $this->position = 1;
         }
 
+        $this->foundToken("whitespace", $char);
         return $responseChars;
     }
 
@@ -186,6 +192,27 @@ class SkenerController
         return $chars;
     }
 
+    protected function parseException($chars)
+    {
+        $lastToken = end($this->tokens);
+        $typo = "";
+
+        if($lastToken['type'] !== 'whitespace')
+        {
+            $typo = $lastToken['value'];
+        }
+
+        $callback = function($chars, $index)
+        {
+            return !$this->isWhitespace($chars, $index);
+        };
+
+        $typo = $typo . join("", $this->splitWhile($chars, $callback)[0]);
+
+        $didYouMean = $this->findMeaning($typo);
+        throw new LexerException($chars[0], $didYouMean, ceil($this->lines / 2), $this->position);
+    }
+
     protected function isWhitespace($chars, $index = 0)
     {
         $whiteSpaces = [" ", "\r\n", "\t", "\n", "\r"];
@@ -223,12 +250,32 @@ class SkenerController
     {
         return $chars[$index] === "'";
     }
+
+    protected function findMeaning($typo)
+    {
+        $foundSimilar = "";
+        $index = 100;
+        $delimsKeywords = array_merge(static::DELIM, static::DELIM2, static::KEYWORDS);
+
+        foreach($delimsKeywords as $delkey)
+        {
+            $lastIndex = levenshtein($typo, $delkey);
+
+            if($lastIndex <= $index)
+            {
+                $index = $lastIndex;
+                $foundSimilar = $delkey;
+            }
+        }
+
+        return $foundSimilar;
+    }
 }
 
 class LexerException extends \Exception
 {
-    public function __construct($char, $line, $position)
+    public function __construct($char, $didYouMean, $line, $position)
     {
-        parent::__construct("found unexpected character: [$char]. At: [$line]:[$position]");
+        parent::__construct("found unexpected character: [$char]. At: [$line]:[$position], Did you mean: [$didYouMean] ?");
     }
 }
