@@ -30,10 +30,12 @@ class SkenerController
         $code = str_split(static::CODE);
 
 
-        return array_filter($this->tokenize($code), function($token) {
+        $data['tokens'] = array_filter($this->tokenize($code), function($token) {
 
             return $token['type'] !== 'whitespace';
         });
+
+        return view('skener', $data);
     }
 
     protected function tokenize($chars)
